@@ -116,7 +116,11 @@ export default function ResultsPage() {
 
         {/* Route overview */}
         <div className="grid gap-6 lg:grid-cols-3">
-          <SectionCard title="Route Summary" className="lg:col-span-1">
+          <SectionCard
+            title="Route Summary"
+            subtitle=""
+            className="lg:col-span-1"
+          >
             <dl className="space-y-3 text-sm">
               <SummaryRow label="Distance" value={`${route.total_distance_miles.toLocaleString()} mi`} />
               <SummaryRow label="Raw drive time" value={formatHours(route.total_drive_duration_hours)} />
