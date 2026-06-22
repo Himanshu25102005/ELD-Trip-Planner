@@ -71,6 +71,11 @@ class EnrichmentTests(SimpleTestCase):
 
 
 class PlanTripAPITests(APITestCase):
+    def test_health_endpoint(self):
+        response = self.client.get("/api/health/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "ok")
+
     @patch("tripplanner.views.build_route")
     def test_enriched_fields_in_response(self, mock_build_route):
         mock_build_route.return_value = _make_route(500, 9)

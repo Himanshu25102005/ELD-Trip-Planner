@@ -1,9 +1,25 @@
 import type { ApiError, TripPlanInput, TripPlanResponse } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function getApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+  if (configured) {
+    return configured;
+  }
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:8000";
+  }
+  return "";
+}
 
 export async function planTrip(input: TripPlanInput): Promise<TripPlanResponse> {
-  const response = await fetch(`${API_BASE}/api/plan-trip/`, {
+  const apiBase = getApiBase();
+  if (!apiBase) {
+    throw new Error(
+      "NEXT_PUBLIC_API_URL is not configured. Set it in Vercel environment variables."
+    );
+  }
+
+  const response = await fetch(`${apiBase}/api/plan-trip/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

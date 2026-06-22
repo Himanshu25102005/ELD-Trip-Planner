@@ -2,68 +2,64 @@
 
 Full-stack FMCSA Hours-of-Service trip planning tool. Given a current location, pickup, dropoff, and rolling 70-hour cycle usage, the app computes a compliant multi-day driving schedule and renders route maps plus FMCSA-style daily log sheets.
 
-**Designed for assessment reviewers:** the results page includes a compliance audit, duty-period breakdown, event timeline, stop explanations, and an optional Assessment Review panel.
-
 ## Stack
 
-| Layer | Tech |
-|---|---|
-| Frontend | Next.js 16, React 19, Tailwind CSS 4, Leaflet |
-| Backend | Django 5, Django REST Framework |
-| Routing / geocoding | OpenRouteService (optional API key) or OSRM + Nominatim fallback |
+| Layer | Tech | Deployment |
+|---|---|---|
+| Frontend | Next.js 16, React 19, Tailwind CSS 4, Leaflet | **Vercel** |
+| Backend | Django 5, DRF, Gunicorn, WhiteNoise | **Railway** (or Render) |
+| Routing | OpenRouteService (optional) or OSRM + Nominatim | — |
 
 ## Architecture
 
 ```
 ┌─────────────────────┐         REST/JSON          ┌──────────────────────────┐
 │   Next.js Frontend   │ ─────────────────────────► │   Django + DRF Backend    │
-│   (Vercel)           │ ◄───────────────────────── │   (Render / Railway)      │
+│   (Vercel)           │ ◄───────────────────────── │   (Railway / Render)      │
 └──────────┬──────────┘                              └────────────┬─────────────┘
-           │ map tiles (Leaflet/OSM)                              │
-           │                                                      │ geocode + route
+           │ Leaflet / OSM tiles                                  │ geocode + route
            ▼                                                      ▼
-┌─────────────────────┐                              ┌──────────────────────────┐
-│  OpenStreetMap       │                              │  ORS / OSRM + Nominatim   │
-└─────────────────────┘                              └──────────────────────────┘
-
-Backend service pipeline (single POST /api/plan-trip/):
-
-  route_engine  →  hos_engine  →  log_builder  →  plan_enrichment
-  (geocode/route)  (FMCSA sim)    (daily logs)     (compliance, duty periods,
-                                                     timeline, explanations)
+   NEXT_PUBLIC_API_URL                              POST /api/plan-trip/
 ```
 
-## Project structure
+**Repository layout** — deploy independently:
 
 ```
 ELD/
-├── backend/
-│   └── tripplanner/services/
-│       ├── route_engine.py      # Geocoding + routing
-│       ├── hos_engine.py          # FMCSA simulation (core logic)
-│       ├── fuel_engine.py         # Fuel interval helpers
-│       ├── log_builder.py         # Daily log sheets + timestamps
-│       └── plan_enrichment.py     # Compliance audit, duty periods, reviewer stats
-├── frontend/
-│   └── components/
-│       ├── compliance/            # ComplianceSummary, DutyPeriodAnalysis, HOSExplanation
-│       ├── trip/                  # TripTimeline, StopDetailsPanel
-│       └── reviewer/              # Assessment Review panel
-└── blank-paper-log.png
+├── backend/          ← Railway / Render (root directory = backend)
+├── frontend/         ← Vercel (root directory = frontend)
+└── README.md
 ```
 
-## Quick start
+---
+
+## Local development
+
+### Prerequisites
+
+- Python 3.12+
+- Node.js 20+
+- npm
 
 ### Backend
 
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate        # Windows
+
+# Windows
+venv\Scripts\activate
+# macOS/Linux
+source venv/bin/activate
+
 pip install -r requirements.txt
 cp .env.example .env
+python manage.py migrate
 python manage.py runserver
 ```
+
+API: `http://localhost:8000`  
+Health check: `GET http://localhost:8000/api/health/`
 
 ### Frontend
 
@@ -74,106 +70,233 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-Open **http://localhost:3000** → submit a trip → review results at `/results`.
+App: `http://localhost:3000`
 
-## HOS engine (how it works)
-
-The HOS engine (`hos_engine.py`) simulates a trip as a sequence of duty-status events:
-
-1. Optional deadhead drive (current → pickup)
-2. **1-hour on-duty pickup** (assessment assumption)
-3. Driving loop with FMCSA rules applied each step:
-   - Max **11 hours driving** per duty period
-   - Max **14-hour duty window** (non-pausing; includes breaks)
-   - **30-minute break** after 8 cumulative hours of driving
-   - **10-hour off-duty reset** when daily limits are reached
-   - **34-hour restart** when the 70-hour cycle is exhausted
-   - **Fuel stop** every 1,000 miles (30-min on-duty)
-4. **1-hour on-duty dropoff**
-
-The 11-hour and 14-hour clocks run **simultaneously** — whichever limit is hit first forces a stop.
-
-## Duty period vs. calendar day (critical)
-
-| Concept | Definition |
-|---|---|
-| **Duty period** | Starts at first on-duty/driving after a 10+ hour off-duty reset; ends at next 10+ hour reset |
-| **Calendar day (log sheet)** | Midnight-to-midnight bucket for FMCSA daily log display |
-
-**A single duty period can span two calendar days.** When it crosses midnight, the log sheet splits the driving block — so Day 2 might show 13.5h driving and Day 3 might show 13.0h driving, while each **duty period** still respects the 11-hour limit.
-
-The **Duty Period Analysis** panel on the results page shows per-period totals so reviewers can verify compliance without misreading calendar-day totals.
-
-## Compliance logic
-
-After simulation, `plan_enrichment.py` audits the generated plan:
-
-- ✓ 11-hour driving rule (per duty period)
-- ✓ 14-hour duty window (per duty period)
-- ✓ 30-minute break requirement
-- ✓ 70-hour / 8-day cycle
-- ✓ Required 10-hour resets
-
-The **FMCSA Compliance Check** panel displays pass/fail for each rule with human-readable explanations.
-
-## API response (key fields)
-
-```json
-{
-  "route": { "total_distance_miles", "polyline", "stops" },
-  "summary": { "total_days", "trip_start", "trip_end" },
-  "logs": [ "per-calendar-day FMCSA log sheets" ],
-  "compliance": { "compliant", "status", "checks" },
-  "duty_periods": [ "per-period driving/on-duty/off-duty totals" ],
-  "timeline": [ "chronological events with timestamps" ],
-  "hos_explanations": [ "why each stop/reset was inserted" ],
-  "stop_details": { "fuel_stops", "rest_stops" },
-  "reviewer": { "raw metrics + assessment assumptions" }
-}
-```
-
-## Assumptions (hardcoded per assessment)
-
-| Assumption | Value |
-|---|---|
-| Driver type | Property-carrying (not passenger) |
-| Cycle | 70-hour / 8-day (not 60/7) |
-| Pickup / dropoff | 1 hour on-duty each |
-| Fuel | Every 1,000 miles, 30-minute stop |
-| Adverse weather | Not implemented |
-| Sleeper berth split | Not implemented |
-| Timezone | Single timezone (America/Chicago) |
-
-## Tradeoffs
-
-| Decision | Rationale |
-|---|---|
-| No database | Stateless request/response; no trip history required by assessment |
-| Enrichment layer separate from HOS engine | Keeps simulation pure; explainability is derived, not mixed into core logic |
-| Calendar-day log split at midnight | Matches FMCSA paper log format; requires duty-period panel to avoid reviewer confusion |
-| OSRM/Nominatim fallback | Works without API keys for local demo; ORS optional for production |
-| sessionStorage for results | Simple single-page flow; no auth or persistence needed |
-
-## Tests
+### Run tests
 
 ```bash
 cd backend
 python manage.py test tripplanner.tests
 ```
 
-12 tests cover HOS engine edge cases, daily log 24-hour invariant, and enrichment/compliance audit.
+---
 
-## Deployment
+## Environment variables
 
-- **Frontend (Vercel):** set `NEXT_PUBLIC_API_URL`
-- **Backend (Render/Railway):** set `CORS_ALLOWED_ORIGINS`, `ALLOWED_HOSTS`, optional `ORS_API_KEY`
+### Backend (`backend/.env`)
 
-## Screenshots
+| Variable | Required | Description |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | Production | Random secret. Generate: `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"` |
+| `DJANGO_DEBUG` | Yes | `True` locally, **`False` in production** |
+| `ALLOWED_HOSTS` | Production | Comma-separated hostnames, e.g. `your-app.up.railway.app` |
+| `CORS_ALLOWED_ORIGINS` | Production | Comma-separated frontend URLs, e.g. `https://your-app.vercel.app` |
+| `CSRF_TRUSTED_ORIGINS` | Optional | HTTPS origins for CSRF; defaults to https entries from CORS |
+| `ORS_API_KEY` | Optional | OpenRouteService key; falls back to OSRM/Nominatim |
+| `DATABASE_URL` | Optional | PostgreSQL URL; **not required** (see Database section) |
+| `CORS_ALLOW_VERCEL_PREVIEWS` | Optional | `true` to allow all `*.vercel.app` preview URLs |
+| `WEB_CONCURRENCY` | Optional | Gunicorn workers (default `2`) |
+| `GUNICORN_TIMEOUT` | Optional | Request timeout seconds (default `120`) |
 
-_Add screenshots of the results page showing Compliance Check, Duty Period Analysis, and Daily Log Sheets after deploying._
+Railway and Render automatically set `RAILWAY_PUBLIC_DOMAIN` / `RENDER_EXTERNAL_HOSTNAME` — these are appended to `ALLOWED_HOSTS`.
 
-Recommended captures:
-1. Trip input form
-2. Results page — FMCSA Compliance Check (COMPLIANT)
-3. Duty Period Analysis showing per-period driving ≤ 11h
-4. Daily log sheet with midnight-split driving block
+### Frontend (`frontend/.env.local` / Vercel)
+
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | Production | Backend URL **without trailing slash**, e.g. `https://your-api.up.railway.app` |
+
+---
+
+## Database
+
+**No application database is required.** The trip planner is stateless — one request in, one computed plan out. There are no Django models in `tripplanner`.
+
+Django still needs a database for its internal tables (migrations, sessions framework). **SQLite is sufficient** and is the default. `start.sh` runs `migrate` on each deploy.
+
+Optional: set `DATABASE_URL` to a Railway/Render PostgreSQL instance if you prefer Postgres for Django internals. This does not change application behavior.
+
+---
+
+## Deploy backend — Railway (recommended)
+
+### 1. Create project
+
+1. Push this repo to GitHub.
+2. [Railway](https://railway.app) → **New Project** → **Deploy from GitHub repo**.
+3. Set **Root Directory** to `backend`.
+
+### 2. Environment variables
+
+In Railway → **Variables**:
+
+| Variable | Value |
+|---|---|
+| `DJANGO_DEBUG` | `False` |
+| `DJANGO_SECRET_KEY` | *(generate a random key)* |
+| `ALLOWED_HOSTS` | `your-service.up.railway.app` *(your Railway domain)* |
+| `CORS_ALLOWED_ORIGINS` | `https://your-app.vercel.app` *(set after Vercel deploy)* |
+| `ORS_API_KEY` | *(optional)* |
+
+### 3. Build & start (auto-detected)
+
+Railway uses `railway.toml` and `start.sh`:
+
+- **Build:** `pip install -r requirements.txt` (Nixpacks)
+- **Start:** `bash start.sh` → migrate → collectstatic → Gunicorn
+- **Health check:** `GET /api/health/`
+
+### 4. Generate domain
+
+Railway → **Settings** → **Networking** → **Generate Domain**.
+
+Copy the public URL (e.g. `https://eld-api-production.up.railway.app`).
+
+### 5. Verify
+
+```bash
+curl https://your-api.up.railway.app/api/health/
+# {"status":"ok"}
+```
+
+---
+
+## Deploy backend — Render (alternative)
+
+### Option A: Blueprint
+
+1. Render Dashboard → **New** → **Blueprint**.
+2. Connect repo — Render reads `render.yaml` at repo root.
+3. Set `CORS_ALLOWED_ORIGINS` and `ALLOWED_HOSTS` in the service environment.
+
+### Option B: Manual web service
+
+| Setting | Value |
+|---|---|
+| Root Directory | `backend` |
+| Runtime | Python 3 |
+| Build Command | `pip install -r requirements.txt && python manage.py collectstatic --noinput` |
+| Start Command | `bash start.sh` |
+| Health Check Path | `/api/health/` |
+
+Environment variables: same as Railway table above. Render sets `RENDER_EXTERNAL_HOSTNAME` automatically.
+
+---
+
+## Deploy frontend — Vercel
+
+### 1. Import project
+
+1. [Vercel](https://vercel.com) → **Add New** → **Project** → import GitHub repo.
+2. Set **Root Directory** to `frontend`.
+3. Framework Preset: **Next.js** (auto-detected).
+
+### 2. Environment variables
+
+| Variable | Value | Environments |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `https://your-api.up.railway.app` | Production, Preview, Development |
+
+**No trailing slash.**
+
+### 3. Build settings
+
+| Setting | Value |
+|---|---|
+| Build Command | `npm run build` |
+| Output Directory | `.next` (default) |
+| Install Command | `npm install` |
+
+`frontend/vercel.json` documents these defaults.
+
+### 4. Deploy & connect CORS
+
+After Vercel deploys, copy your production URL (e.g. `https://eld-trip-planner.vercel.app`).
+
+Update Railway/Render backend:
+
+```
+CORS_ALLOWED_ORIGINS=https://eld-trip-planner.vercel.app
+CSRF_TRUSTED_ORIGINS=https://eld-trip-planner.vercel.app
+```
+
+Redeploy backend if needed.
+
+### 5. Verify end-to-end
+
+1. Open Vercel URL.
+2. Submit Dallas, TX → Denver, CO.
+3. Confirm map, compliance panel, and log sheets load.
+
+---
+
+## Deployment checklist
+
+Use this after deploying both services:
+
+- [ ] `GET https://<backend>/api/health/` returns `{"status":"ok"}`
+- [ ] Backend `DJANGO_DEBUG=False` and `DJANGO_SECRET_KEY` is set
+- [ ] `ALLOWED_HOSTS` includes backend domain
+- [ ] `CORS_ALLOWED_ORIGINS` includes exact Vercel URL (with `https://`)
+- [ ] Vercel `NEXT_PUBLIC_API_URL` points to backend (no trailing slash)
+- [ ] Frontend builds: `cd frontend && npm run build`
+- [ ] Backend tests pass: `cd backend && python manage.py test`
+- [ ] Trip form submits without CORS errors (browser DevTools → Network)
+- [ ] Map renders (Leaflet loads client-side only)
+- [ ] Log sheets and compliance panel appear on results page
+- [ ] Long trip (e.g. Dallas → Seattle) returns multi-day logs
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| CORS error in browser | Frontend origin not in `CORS_ALLOWED_ORIGINS` | Add exact Vercel URL with `https://`; redeploy backend |
+| `502` / timeout on plan-trip | Geocoding/routing slow | Increase `GUNICORN_TIMEOUT`; add `ORS_API_KEY` |
+| `DisallowedHost` | Missing `ALLOWED_HOSTS` | Add Railway/Render domain; platform env vars auto-append |
+| `NEXT_PUBLIC_API_URL is not configured` | Missing Vercel env var | Set in Vercel → Settings → Environment Variables; redeploy |
+| `DJANGO_SECRET_KEY must be set` | Production without secret | Set `DJANGO_SECRET_KEY` on Railway/Render |
+| Map works locally, not prod | API unreachable | Verify `NEXT_PUBLIC_API_URL` and CORS |
+| Admin static files broken | Expected — API-only app | `/admin/` not required for assessment |
+
+### Test CORS locally with production settings
+
+```bash
+# backend/.env
+DJANGO_DEBUG=False
+DJANGO_SECRET_KEY=your-local-test-key
+ALLOWED_HOSTS=localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+```
+
+---
+
+## API
+
+**`POST /api/plan-trip/`**
+
+```json
+{
+  "current_location": "Dallas, TX",
+  "pickup_location": "Dallas, TX",
+  "dropoff_location": "Denver, CO",
+  "current_cycle_used_hours": 10
+}
+```
+
+**`GET /api/health/`** — deployment health check.
+
+---
+
+## FMCSA rules (summary)
+
+11-hour driving · 14-hour duty window · 30-minute break after 8h driving · 70-hour/8-day cycle · 10-hour reset · 34-hour restart. Calendar-day log totals may exceed 11h when a duty period crosses midnight — see Duty Period Analysis on the results page.
+
+## Tests
+
+```bash
+cd backend && python manage.py test tripplanner.tests
+```
+
+13 tests: HOS engine, log builder, enrichment, health endpoint, API contract.

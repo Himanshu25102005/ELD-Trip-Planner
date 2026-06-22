@@ -10,6 +10,14 @@ from .services.plan_enrichment import enrich_trip_plan
 from .services.route_engine import GeocodingError, RoutingError, build_route
 
 
+class HealthView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        return Response({"status": "ok"})
+
+
 class PlanTripView(APIView):
     def post(self, request):
         serializer = PlanTripSerializer(data=request.data)

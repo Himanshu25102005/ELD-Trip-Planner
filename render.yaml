@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: eld-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    startCommand: bash start.sh
+    healthCheckPath: /api/health/
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: GUNICORN_TIMEOUT
+        value: "120"
+      # Set after Vercel deploy:
+      # - key: ALLOWED_HOSTS
+      #   value: your-app.onrender.com
+      # - key: CORS_ALLOWED_ORIGINS
+      #   value: https://your-app.vercel.app
+      # Optional:
+      # - key: ORS_API_KEY
+      #   sync: false
+      # - key: DATABASE_URL
+      #   fromDatabase:
+      #     name: eld-db
+      #     property: connectionString
+
+# Optional PostgreSQL — not required (app is stateless).
+# Uncomment if you prefer Postgres over SQLite for Django internals.
+#
+# databases:
+#   - name: eld-db
+#     plan: free
