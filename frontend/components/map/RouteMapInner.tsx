@@ -13,26 +13,28 @@ const STOP_COLORS = {
 };
 
 export default function RouteMapInner({ polyline, stops }) {
-  const latLngs = (polyline || []).map(([lng, lat]) => [lat, lng]);
+  const latLngs: [number, number][] =
+    (polyline || []).map(([lng, lat]) => [lat, lng]);
 
-  const center =
+  const center: [number, number] =
     latLngs.length > 0
       ? [
-          latLngs.reduce((s, p) => s + p[0], 0) / latLngs.length,
-          latLngs.reduce((s, p) => s + p[1], 0) / latLngs.length,
-        ]
+        latLngs.reduce((s, p) => s + p[0], 0) / latLngs.length,
+        latLngs.reduce((s, p) => s + p[1], 0) / latLngs.length,
+      ]
       : [39.8283, -98.5795];
-
   // @ts-ignore react-leaflet types vary by version
   return (
     <MapContainer
-      center={center}
-      zoom={5}
-      style={{ height: 420, width: "100%" }}
-      scrollWheelZoom
+      {...({
+        center,
+        zoom: 5,
+        style: { height: 420, width: "100%" },
+        scrollWheelZoom: true,
+      } as any)}
     >
+      {/* @ts-ignore */}
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       {latLngs.length > 1 && (

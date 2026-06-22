@@ -15,7 +15,10 @@ export default function HOSExplanationPanel({
   if (!explanations?.length) return null;
 
   return (
-    <SectionCard>
+    <SectionCard
+      title="Hours of Service Explanation"
+      subtitle=""
+    >
       <button
         type="button"
         onClick={() => setOpen(!open)}

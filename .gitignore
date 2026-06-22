@@ -2,9 +2,6 @@
 __pycache__/
 *.py[cod]
 venv/
-.env
-.env.local
-.env.production
 db.sqlite3
 *.sqlite3
 staticfiles/
@@ -12,12 +9,11 @@ staticfiles/
 # Node
 node_modules/
 .next/
-.env.local
 
 # OS
 .DS_Store
 Thumbs.db
 
 # IDE
-.vscode/
 .idea/
+config.bat

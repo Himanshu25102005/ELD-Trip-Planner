@@ -7,16 +7,19 @@ export default function ComplianceSummaryPanel({ compliance }: { compliance: Com
   const isCompliant = compliance.compliant;
 
   return (
-    <SectionCard accent={isCompliant}>
+    <SectionCard
+      title="FMCSA Compliance Check"
+      subtitle=""
+      accent={isCompliant}
+    >
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             FMCSA Compliance Check
           </p>
           <p
-            className={`mt-1 text-2xl font-bold tracking-tight ${
-              isCompliant ? "text-emerald-700" : "text-red-700"
-            }`}
+            className={`mt-1 text-2xl font-bold tracking-tight ${isCompliant ? "text-emerald-700" : "text-red-700"
+              }`}
           >
             {compliance.status}
           </p>
@@ -33,11 +36,10 @@ export default function ComplianceSummaryPanel({ compliance }: { compliance: Com
             className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3"
           >
             <span
-              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                check.passed
+              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${check.passed
                   ? "bg-emerald-100 text-emerald-700"
                   : "bg-red-100 text-red-700"
-              }`}
+                }`}
               aria-hidden
             >
               {check.passed ? "✓" : "✗"}
